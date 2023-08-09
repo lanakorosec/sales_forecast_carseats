@@ -1,0 +1,212 @@
+---
+title: "Sales Prediction Carseats"
+author: "Lana Korošec"
+date: "2023-08-09"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Dataset Carseats frpm ISLR package is a study case of sales prediction.
+
+We will forecast sales based on variables: 
+price, 
+advertising, 
+ShelveLoc (3-factor variable - positioning quality)
+
+Regarding given data, we change factos in variable ShelveLoc to have "natural" order from "bad to good"
+
+```{r, include=FALSE, warning=FALSE}
+library(ggplot2)
+library(gridExtra)
+library(ISLR)
+library(effects)
+library(car)
+library(multcomp)
+
+Carseats$ShelveLoc <- factor(Carseats$ShelveLoc, levels=c("Bad","Medium", "Good"))
+
+```
+
+
+
+## Data presentation
+
+```{r, echo=FALSE, warning=FALSE}
+
+
+#data(Carseats)
+#dim(Carseats)
+summary(Carseats)
+
+ggplot(data = Carseats, aes(x=Price, y=Sales, color = ShelveLoc))+
+  geom_point()+
+ggtitle(label = "Sales/Price")+
+  geom_smooth(method = "lm", se = FALSE) 
+
+
+
+ggplot(data = Carseats, aes(x=Advertising, y=Sales, color = ShelveLoc))+
+  geom_point()+
+ggtitle(label = "Sales/Advertising")+
+  geom_smooth(method = "lm", se = FALSE) 
+
+```
+
+The influence of ShelveLoc, that is shelve location, is clear from both graph. Whereas we see that Price in comparison with Advertising has greater impact on sales.
+
+These are first impressions, but lets dive in the research itself.
+
+## Analysis
+
+First, we would like to see if there is interaction between pairs of predictor variables:
+- ShelveLoc and Price
+- ShelveLoc and Advertising
+
+
+```{r, echo=FALSE, warning=FALSE}
+
+p1 <- ggplot(data = Carseats, aes(x = Price, y = Sales)) +
+  facet_grid(.~ShelveLoc) + geom_point() +
+  xlab("Price (USD)")  +   ylab("Sales (1000)")+
+  geom_smooth(se=FALSE)
+p2 <- ggplot(data = Carseats, aes(x = Advertising, y = Sales)) +
+  facet_grid(.~ShelveLoc) +  geom_point() +
+  xlab("Advertising (1000 USD)")  +   ylab("Sales (1000)")+
+  geom_smooth(se=FALSE)
+
+
+grid.arrange(p1, p2, nrow = 2, ncol = 1)
+
+
+```
+
+
+Using smoother we discover that it might be reasonable to take into account interaction between advertising and shelveLoc when creating linear model. 
+
+Further we use statistical test to get correct answer. 
+
+We create one model without interaction and one model with interaction and check ANOVA. It turns out the interaction is unsignificant.
+
+
+```{r, echo=FALSE}
+
+model.seat = lm(Sales~Price+Advertising+ShelveLoc, data = Carseats)
+
+summary(model.seat)
+
+model.seatInt = lm(Sales~Price+Advertising+ShelveLoc+Price:ShelveLoc+Advertising:ShelveLoc, data = Carseats)
+
+summary(model.seatInt)
+
+anova(model.seat, model.seatInt) #H0 je da se ne razlikujeta
+
+
+```
+
+Therefore we continue with model.seat.
+
+At this point we check whether there is interaction between Price and Advertising
+
+```{r, echo=FALSE}
+
+
+plot(Effect(c("Advertising", "Price", "ShelveLoc"), model.seat,
+            partial.residuals = TRUE), ci.style = "none")
+
+model.seatInt2 = lm(Sales~Price*Advertising+ShelveLoc, data = Carseats)
+
+plot(Effect(c("Advertising", "Price", "ShelveLoc"), model.seatInt2,
+            partial.residuals = TRUE), ci.style = "none")
+
+
+anova(model.seat, model.seatInt2) #tisto kar smo videli na "Effects" je zanemarljiva
+
+```
+
+We see that interaction between numeric predictors is as well insignificant.
+
+
+## Model diagnosis model.seat
+
+```{r, echo=FALSE}
+
+summary(model.seat)
+par(mfrow = c(2, 2),  oma = c(0, 0, 2, 0))
+plot(model.seat)
+
+confint(model.seat)
+
+
+#model.seat$coefficients
+
+```
+
+The coefficient of determination R2 has a value of 0.609.
+
+The model explains 60.9 % of variability of Sales. 
+
+The expected Sales is 10.54. 1 m/s increase in wind speed results in almost 8.5 hundreths decrease in 110 metres hurdles run result.
+
+
+
+```{r, echo=FALSE}
+avPlots(model.seat)
+```
+
+Price has the most significant impact on Sales, which represents the slope of the line. 
+
+
+```{r, echo=FALSE}
+crPlots(model.seat) #ce ni interakcije, ce bi bila moramo effect
+#gladilniki se dobro prilegajo, vse štima - šolsko je model O.K.
+
+anova(model.seat)
+
+```
+
+## Results
+
+For "official results" to make sure that confidence intervals are correct, though we are testing multiple hypothesis, we use correction with the use of multcomp glth
+
+```{r, echo=FALSE}
+
+#results = glht(model.seat)
+#summary(results)
+#confint(results)
+
+
+plot(Effect(c("Price", "ShelveLoc"), model.seat), main="",
+     multiline=TRUE, ci.style="bands", ylim=c(0, 17))
+
+
+plot(Effect(c("Advertising", "ShelveLoc"), model.seat), main="",
+     multiline=TRUE, ci.style="bands", ylim=c(0, 17))
+
+```
+
+The upper graphics represents results assuming an average value of advertising.
+
+
+```{r, echo=FALSE}
+
+results = glht(model.seat)
+summary(results)
+confint(results)
+
+
+plot(Effect(c("Advertising", "ShelveLoc"), model.seat), main="",
+     multiline=TRUE, ci.style="bands", ylim=c(0, 17))
+
+```
+
+The upper graphics represents results assuming an average price (reduction).
+
+
+## Remark
+
+The case study was done and has been presented in the course Linear Models by Damjana Kastelec UNI LJ 22/23
